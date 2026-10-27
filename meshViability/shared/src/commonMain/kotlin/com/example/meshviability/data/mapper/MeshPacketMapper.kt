@@ -27,17 +27,18 @@ fun MeshPacket.toMessageOrNull(receivedAt: Long): Message? {
     )
 }
 
-// RSSI = 0 significa que el paquete no vino por radio (o no se midió)
+// sin rx_rssi el paquete no vino por radio (o no se midió); 0 dBm es una lectura válida
 private fun MeshPacket.toLinkQualityOrNull(): LinkQuality? {
-    val rssi = rx_rssi?.takeIf { it != 0 } ?: return null
+    val rssi = rx_rssi ?: return null
     val snr = rx_snr ?: return null
 
-    // hop_start = saltos con los que salió; hop_limit = saltos que le quedan
+    // hop_start = saltos con los que salió; hop_limit = saltos que le quedan.
+    // hop_start = 0 es firmware anterior a 2.3: saltos desconocidos, no directo.
     val start = hop_start ?: 0
     val limit = hop_limit ?: 0
-    val hops = if (start > 0) start - limit else null
+    val hops = if (start > 0 && limit <= start) start - limit else null
 
-    return LinkQuality(rssiDbm = rssi.toFloat(), snrDb = snr, hops = hops)
+    return LinkQuality(rssiDbm = rssi.toFloat(), snrDb = snr, hops = hops, viaMqtt = via_mqtt)
 }
 
 /**

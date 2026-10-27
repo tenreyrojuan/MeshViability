@@ -11,7 +11,8 @@ enum class MessageStatus {
 data class LinkQuality(
     val rssiDbm : Float, // señal
     val snrDb : Float,  // relacion señal ruido
-    val hops : Int? // saltos. Por cuantos nodos pasaron por la señal. Puede no haber
+    val hops : Int?, // saltos. Por cuantos nodos pasaron por la señal. Puede no haber
+    val viaMqtt: Boolean = false,
 )
 
 data class Message (

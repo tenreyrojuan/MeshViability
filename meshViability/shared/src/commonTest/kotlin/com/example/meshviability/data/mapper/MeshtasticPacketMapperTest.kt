@@ -8,14 +8,16 @@ import org.meshtastic.proto.PortNum
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class MeshPacketMapperTest {
 
     private fun paquete(
         portnum: PortNum = PortNum.TEXT_MESSAGE_APP,
-        rssi: Int = -95,
+        rssi: Int? = -95,
         hopStart: Int = 3,
         hopLimit: Int = 3,
+        viaMqtt: Boolean = false,
     ) = MeshPacket(
         from = 0x5678,
         to = -1,
@@ -24,6 +26,7 @@ class MeshPacketMapperTest {
         rx_snr = 4.25f,
         hop_start = hopStart,
         hop_limit = hopLimit,
+        via_mqtt = viaMqtt,
         decoded = Data(portnum = portnum, payload = "hola".encodeUtf8()),
     )
 
@@ -51,6 +54,21 @@ class MeshPacketMapperTest {
 
     @Test
     fun sinRssiNoHayMedicion() {
-        assertNull(paquete(rssi = 0).toMessageOrNull(0L)!!.signalQuality)
+        assertNull(paquete(rssi = null).toMessageOrNull(0L)!!.signalQuality)
+    }
+
+    @Test
+    fun rssiCeroEsUnaLecturaValida() {
+        assertEquals(0f, paquete(rssi = 0).toMessageOrNull(0L)!!.signalQuality!!.rssiDbm)
+    }
+
+    @Test
+    fun hopStartCeroSonSaltosDesconocidos() {
+        assertNull(paquete(hopStart = 0, hopLimit = 0).toMessageOrNull(0L)!!.signalQuality!!.hops)
+    }
+
+    @Test
+    fun viaMqttSeConserva() {
+        assertTrue(paquete(viaMqtt = true).toMessageOrNull(0L)!!.signalQuality!!.viaMqtt)
     }
 }
