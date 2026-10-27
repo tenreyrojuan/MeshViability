@@ -1,13 +1,13 @@
 package com.example.meshviability.data.repository
 
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
-import com.example.meshviability.data.mapper.toLoraSettings
 import com.example.meshviability.data.mapper.toDeliveryUpdateOrNull
+import com.example.meshviability.data.mapper.toLoraSettings
 import com.example.meshviability.data.mapper.toMessageOrNull
 import com.example.meshviability.data.protocol.MeshProtocolClient
 import com.example.meshviability.data.protocol.MeshState
+import com.example.meshviability.domain.entities.DeliveryUpdate
 import com.example.meshviability.domain.entities.LoraSettings
+import com.example.meshviability.domain.entities.MeshNode
 import com.example.meshviability.domain.entities.Message
 import com.example.meshviability.domain.entities.MessageStatus
 import kotlinx.coroutines.CoroutineScope
@@ -15,15 +15,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import org.meshtastic.proto.Data
-import org.meshtastic.proto.FromRadio
 import org.meshtastic.proto.MeshPacket
-import org.meshtastic.proto.PortNum
-import org.meshtastic.proto.Routing
 
 /**
  * Única fuente de verdad para la pantalla. Guarda todo en memoria.
@@ -41,6 +39,15 @@ class MeshRepository(
     val loraSettings: StateFlow<LoraSettings?> = client.loraConfig
         .map { it?.toLoraSettings() }
         .stateIn(scope, SharingStarted.Eagerly, null)
+
+    // los demás nodos, sin el nuestro
+    val remoteNodes: StateFlow<List<MeshNode>> = combine(client.nodes, client.state) { nodes, state ->
+        val me = (state as? MeshState.Ready)?.myNodeNum
+        nodes.values.filter { it.num != me }.sortedBy { it.longName }
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    val firmwareVersion: StateFlow<String?> = client.firmwareVersion
+    val invalidPackets: StateFlow<Int> = client.invalidPackets
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
@@ -61,22 +68,30 @@ class MeshRepository(
         // ¿es una confirmación? → actualizar el estado del mensaje original
         packet.toDeliveryUpdateOrNull()?.let { update ->
             _messages.update { list ->
-                list.map { msg ->
-                    if (msg.id == update.messageId) msg.copy(status = update.status) else msg
-                }
+                list.map { msg -> if (update.appliesTo(msg)) msg.copy(status = update.status) else msg }
             }
         }
     }
 
+    // En unicast, solo el ACK del destinatario confirma la entrega; el de otro nodo
+    // (el nuestro o un repetidor) solo dice que el paquete salió a la malla.
+    private fun DeliveryUpdate.appliesTo(msg: Message): Boolean {
+        if (msg.id != messageId || msg.status != MessageStatus.PENDING) return false
+        if (status == MessageStatus.FAILED) return true
+        return msg.toNodeId == MeshProtocolClient.BROADCAST || fromNodeId == msg.toNodeId
+    }
+
     suspend fun connect(address: String) = client.connect(address)
 
-    suspend fun sendText(text: String) {
-        val id = client.sendText(text)
+    suspend fun disconnect() = client.disconnect()
+
+    suspend fun sendText(text: String, to: Int = MeshProtocolClient.BROADCAST) {
+        val id = client.sendText(text, to)
         val myNodeId = (client.state.value as? MeshState.Ready)?.myNodeNum ?: 0
         val mine = Message(
             id = id,
             fromNodeId = myNodeId,
-            toNodeId = MeshProtocolClient.BROADCAST,
+            toNodeId = to,
             content = text,
             timeStampMs = now(),
             status = MessageStatus.PENDING,

@@ -1,19 +1,24 @@
 package com.example.meshviability.data.protocol
 
+import com.example.meshviability.data.transport.ConnectionState
 import com.example.meshviability.data.transport.RadioTransport
+import com.example.meshviability.domain.entities.MeshNode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import okio.ByteString.Companion.toByteString
 import org.meshtastic.proto.Config
 import org.meshtastic.proto.Data
 import org.meshtastic.proto.FromRadio
 import org.meshtastic.proto.MeshPacket
+import org.meshtastic.proto.NodeInfo
 import org.meshtastic.proto.PortNum
 import org.meshtastic.proto.ToRadio
 import kotlin.random.Random
@@ -23,6 +28,7 @@ sealed interface MeshState {
     data object Disconnected : MeshState
     data object Configuring : MeshState            // handshake en curso
     data class Ready(val myNodeNum: Int) : MeshState  // listo para enviar
+    data class Failed(val reason: String) : MeshState
 }
 
 /** Habla el protocolo Meshtastic sobre cualquier RadioTransport. */
@@ -41,23 +47,70 @@ class MeshProtocolClient(
     private val _loraConfig = MutableStateFlow<Config.LoRaConfig?>(null)
     val loraConfig = _loraConfig.asStateFlow()
 
+    // nodos que conoce el nuestro, incluido él mismo
+    private val _nodes = MutableStateFlow<Map<Int, MeshNode>>(emptyMap())
+    val nodes = _nodes.asStateFlow()
+
+    private val _firmwareVersion = MutableStateFlow<String?>(null)
+    val firmwareVersion = _firmwareVersion.asStateFlow()
+
+    // mensajes del nodo que no se pudieron decodificar
+    private val _invalidPackets = MutableStateFlow(0)
+    val invalidPackets = _invalidPackets.asStateFlow()
+
     private var configId = 0
     private var myNodeNum: Int? = null
 
     /** Empieza a escuchar al nodo. Llamar una vez, antes de connect(). */
     fun start() {
         transport.incoming
-            .map { FromRadio.ADAPTER.decode(it) }   // bytes -> FromRadio
+            .mapNotNull(::decodeOrNull)              // bytes -> FromRadio
             .onEach(::handle)                        // procesar cada mensaje
+            .launchIn(scope)
+
+        transport.connectionState
+            .onEach(::onConnectionChanged)
             .launchIn(scope)
     }
 
     /** Conecta y arranca el handshake pidiendo la configuración. */
     suspend fun connect(address: String) {
-        transport.connect(address)
+        _nodes.value = emptyMap()
+        try {
+            transport.connect(address)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _state.value = MeshState.Failed(e.message ?: "No se pudo conectar con el nodo")
+            return
+        }
         _state.value = MeshState.Configuring
         configId = Random.nextInt(1, Int.MAX_VALUE)
         transport.send(ToRadio(want_config_id = configId).encode())
+    }
+
+    suspend fun disconnect() {
+        transport.disconnect()
+        _state.value = MeshState.Disconnected
+    }
+
+    private fun decodeOrNull(bytes: ByteArray): FromRadio? =
+        try {
+            FromRadio.ADAPTER.decode(bytes)
+        } catch (e: Exception) {
+            _invalidPackets.update { it + 1 }
+            null
+        }
+
+    private fun onConnectionChanged(connection: ConnectionState) {
+        when (connection) {
+            is ConnectionState.ConnectionError -> _state.value = MeshState.Failed(connection.message)
+            ConnectionState.Disconnected ->
+                if (_state.value is MeshState.Configuring || _state.value is MeshState.Ready) {
+                    _state.value = MeshState.Disconnected
+                }
+            else -> Unit
+        }
     }
 
     private fun handle(msg: FromRadio) {
@@ -72,9 +125,16 @@ class MeshProtocolClient(
 
         // configuración de radio
         msg.config?.lora?.let { _loraConfig.value = it }
+
+        msg.node_info?.toMeshNodeOrNull()?.let { node -> _nodes.update { it + (node.num to node) } }
+        msg.metadata?.let { _firmwareVersion.value = it.firmware_version }
     }
 
-    /** Envía un texto. Por defecto a todos (broadcast) en el canal 0. */
+    private fun NodeInfo.toMeshNodeOrNull(): MeshNode? {
+        val u = user ?: return null
+        return MeshNode(num = num, longName = u.long_name, shortName = u.short_name, hopsAway = hops_away)
+    }
+
     /** Envía un texto y devuelve el ID del paquete. Por defecto a todos (broadcast) en el canal 0. */
     suspend fun sendText(text: String, to: Int = BROADCAST, channel: Int = 0): Int {
         check(_state.value is MeshState.Ready) { "El nodo todavía no terminó el handshake" }

@@ -37,10 +37,10 @@ class MeshRepositoryTest {
     // simulacion de confirmacion. Esto entregaria el nodo
     // remover en el futuro.
     // es para hacer prubeas
-    private fun confirmacion(requestId: Int, error: Routing.Error = Routing.Error.NONE)
+    private fun confirmacion(requestId: Int, error: Routing.Error = Routing.Error.NONE, from: Int = 0x1234)
             = FromRadio(
         packet = MeshPacket(
-            from = 0x1234,
+            from = from,
             to = 0x1234,
             decoded = Data(
                 portnum = PortNum.ROUTING_APP,
@@ -156,5 +156,78 @@ class MeshRepositoryTest {
         val settings = repo.loraSettings.value
         assertEquals(ModemPreset.LONG_FAST, settings!!.preset)
         assertEquals(20, settings!!.txPowerDbm)
+    }
+
+    @Test
+    fun unicastSeConfirmaConElAckDelDestinatario() = runTest {
+        val fake = FakeTransport()
+        val repo = MeshRepository(MeshProtocolClient(fake, backgroundScope), backgroundScope, now = { 1000L })
+        repo.connect("fake")
+        runCurrent()
+
+        repo.sendText("hola B", to = 0x5678)
+        val msg = repo.messages.value.single()
+        assertEquals(0x5678, msg.toNodeId)
+
+        fake.push(confirmacion(requestId = msg.id, from = 0x1234))
+        runCurrent()
+        assertEquals(MessageStatus.PENDING, repo.messages.value.single().status)
+
+        fake.push(confirmacion(requestId = msg.id, from = 0x5678))
+        runCurrent()
+        assertEquals(MessageStatus.DELIVERED, repo.messages.value.single().status)
+    }
+
+    @Test
+    fun unicastFallaAunqueElErrorLoInformeNuestroNodo() = runTest {
+        val fake = FakeTransport()
+        val repo = MeshRepository(MeshProtocolClient(fake, backgroundScope), backgroundScope, now = { 1000L })
+        repo.connect("fake")
+        runCurrent()
+
+        repo.sendText("hola B", to = 0x5678)
+        val id = repo.messages.value.single().id
+        fake.push(confirmacion(requestId = id, error = Routing.Error.MAX_RETRANSMIT, from = 0x1234))
+        runCurrent()
+
+        assertEquals(MessageStatus.FAILED, repo.messages.value.single().status)
+    }
+
+    @Test
+    fun confirmacionCorruptaSeIgnora() = runTest {
+        val fake = FakeTransport()
+        val repo = MeshRepository(MeshProtocolClient(fake, backgroundScope), backgroundScope, now = { 1000L })
+        repo.connect("fake")
+        runCurrent()
+
+        repo.sendText("hola malla")
+        val id = repo.messages.value.single().id
+        fake.push(
+            FromRadio(
+                packet = MeshPacket(
+                    from = 0x1234,
+                    decoded = Data(
+                        portnum = PortNum.ROUTING_APP,
+                        request_id = id,
+                        payload = okio.ByteString.of(0xFF.toByte(), 0xFF.toByte()),
+                    ),
+                ),
+            ),
+        )
+        fake.push(paquete(PortNum.TEXT_MESSAGE_APP, "sigo vivo"))
+        runCurrent()
+
+        assertEquals(MessageStatus.PENDING, repo.messages.value.first().status)
+        assertEquals("sigo vivo", repo.messages.value.last().content)
+    }
+
+    @Test
+    fun losNodosRemotosNoIncluyenAlNuestro() = runTest {
+        val fake = FakeTransport(fakeNodeValue = 0x1234, remoteNodeValue = 0x5678)
+        val repo = MeshRepository(MeshProtocolClient(fake, backgroundScope), backgroundScope, now = { 1000L })
+        repo.connect("fake")
+        runCurrent()
+
+        assertEquals(listOf(0x5678), repo.remoteNodes.value.map { it.num })
     }
 }

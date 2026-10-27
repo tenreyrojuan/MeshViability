@@ -54,9 +54,13 @@ fun MeshPacket.toDeliveryUpdateOrNull(): DeliveryUpdate? {
     val requestId = data.request_id?.takeIf { it != 0 } ?: return null
 
     // el contenido es un mensaje Routing con el resultado
-    val routing = Routing.ADAPTER.decode(data.payload)
+    val routing = try {
+        Routing.ADAPTER.decode(data.payload)
+    } catch (e: Exception) {
+        return null
+    }
     val error = routing.error_reason ?: return null
 
     val status = if (error == Routing.Error.NONE) MessageStatus.DELIVERED else MessageStatus.FAILED
-    return DeliveryUpdate(messageId = requestId, status = status)
+    return DeliveryUpdate(messageId = requestId, status = status, fromNodeId = from)
 }

@@ -2,8 +2,6 @@ package com.example.meshviability.domain.entities
 
 enum class MessageStatus {
     PENDING,
-    CONNECTED,
-    DISCONNECTED,
     DELIVERED,
     FAILED
 }
@@ -25,8 +23,9 @@ data class Message (
     val signalQuality : LinkQuality?
 )
 
-// confirmación de entrega de un mensaje enviado
+// confirmación de entrega de un mensaje enviado; fromNodeId = quién la generó
 data class DeliveryUpdate(
     val messageId: Int,
     val status: MessageStatus,
+    val fromNodeId: Int,
 )
