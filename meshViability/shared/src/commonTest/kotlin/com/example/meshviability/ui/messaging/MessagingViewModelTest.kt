@@ -3,6 +3,7 @@ package com.example.meshviability.ui.messaging
 import com.example.meshviability.data.transport.RadioDevice
 import com.example.meshviability.data.transport.ScanResult
 import com.example.meshviability.domain.entities.MessageStatus
+import com.example.meshviability.domain.link.LinkLevel
 import com.example.meshviability.ui.TestScanner
 import com.example.meshviability.ui.TestSession
 import kotlinx.coroutines.Dispatchers
@@ -96,7 +97,9 @@ class MessagingViewModelTest {
         vm.connect(nodoB)
         runCurrent()
 
-        assertEquals("Error: Puerto USB no disponible", vm.uiState.value.statusText)
+        assertEquals("Error de conexión", vm.uiState.value.statusText)
+        assertEquals("Puerto USB no disponible", vm.uiState.value.detailText)
+        assertEquals(ConnectionKind.ERROR, vm.uiState.value.connection)
         assertFalse(vm.uiState.value.isConnected)
     }
 
@@ -113,7 +116,10 @@ class MessagingViewModelTest {
 
         val (directo, repetido) = vm.uiState.value.messages
         assertTrue(directo.validForMeasurement)
-        assertEquals("RSSI -95 dBm · SNR 4,0 dB · 0 saltos", directo.signal)
+        assertEquals("RSSI -95 dBm · SNR 4,0 dB · directo", directo.signal)
+        assertEquals(LinkLevel.SOLID, directo.level)
+        assertEquals("RSSI -95 dBm · SNR 4,0 dB · 1 salto", repetido.signal)
+        assertEquals(null, repetido.level)
         assertFalse(repetido.validForMeasurement)
         assertNotNull(repetido.validityNote)
         assertTrue(repetido.validityNote!!.startsWith("No válido para medición"))

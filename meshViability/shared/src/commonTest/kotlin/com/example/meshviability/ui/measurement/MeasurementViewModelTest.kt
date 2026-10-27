@@ -50,7 +50,11 @@ class MeasurementViewModelTest {
         assertEquals("Sólido", row.levelLabel)
         assertEquals("-71,7 dBm", row.expectedRssi)
         assertEquals("23,3 dB", row.extraLoss)
-        assertEquals("Sólido (según el margen promedio)", vm.uiState.value.overallLevelLabel)
+        assertEquals("Sólido", vm.uiState.value.overallLevelLabel)
+        assertEquals("1 medición válida · 0 descartadas", vm.uiState.value.overallCaption)
+        val bar = vm.uiState.value.chart.single()
+        assertEquals(LinkLevel.SOLID, bar.level)
+        assertEquals(21.5, bar.marginDb, 0.1)
     }
 
     @Test

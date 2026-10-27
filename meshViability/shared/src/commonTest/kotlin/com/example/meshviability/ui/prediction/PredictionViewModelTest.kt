@@ -2,6 +2,7 @@ package com.example.meshviability.ui.prediction
 
 import com.example.meshviability.data.repository.LinkSettingsRepository
 import com.example.meshviability.domain.entities.LoraSettings
+import com.example.meshviability.domain.link.LinkLevel
 import com.example.meshviability.domain.link.ModemPreset
 import com.example.meshviability.domain.link.SpreadingFactor
 import kotlinx.coroutines.Dispatchers
@@ -102,5 +103,19 @@ class PredictionViewModelTest {
         assertTrue(s.spreadingFactorFromNode)
         assertEquals("Configuración del nodo: MEDIUM_FAST · Región US", s.nodeSummary)
         assertEquals("Informado por el nodo", s.field(LinkField.TX_POWER).supportingText)
+    }
+
+    @Test
+    fun balanceDelEnlaceYNivelPrevisto() = runTest {
+        val node = MutableStateFlow<LoraSettings?>(null)
+        val vm = PredictionViewModel(LinkSettingsRepository(node, backgroundScope), node)
+
+        val s = vm.uiState.value
+        assertEquals(LinkLevel.SOLID, s.result!!.level)
+        assertEquals("Margen previsto a 1 km", s.result!!.marginCaption)
+        assertEquals("−71,7 dBm", s.budget.single { it.label == "Potencia recibida (Prx)" }.value)
+        assertEquals("+59,8 dB", s.budget.last().value)
+        assertEquals("−0,0 dB", s.budget.single { it.label == "Pérdida en cables" }.value)
+        assertEquals(LinkSection.entries, s.sections.map { it.section })
     }
 }

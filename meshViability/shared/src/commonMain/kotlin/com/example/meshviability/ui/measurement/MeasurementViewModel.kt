@@ -39,8 +39,6 @@ data class MeasurementRow(
     val messageId: Int,
     val fromLabel: String,
     val elapsed: String,
-    val rssiDbm: Double,
-    val snrDb: Double,
     val evaluation: LinkEvaluation,
     val rssi: String,
     val snr: String,
@@ -53,14 +51,23 @@ data class MeasurementRow(
     val extraLoss: String,
 )
 
+// una barra del gráfico: peor margen de una medición, en orden de llegada
+data class ChartBar(val marginDb: Double, val level: LinkLevel)
+
 data class MeasurementUiState(
-    val rows: List<MeasurementRow> = emptyList(),
+    val rows: List<MeasurementRow> = emptyList(),   // la más reciente primero
     val discarded: Int = 0,
     val distance: String = "",
     val averageWorstMargin: String? = null,
     val averageExtraLoss: String? = null,
     val overallLevel: LinkLevel? = null,
     val overallLevelLabel: String? = null,
+    val overallCaption: String = "Todavía no hay mediciones válidas",
+    val chart: List<ChartBar> = emptyList(),
+    val chartDescription: String = "",
+    val solidDb: Double = LinkThresholds().solidDb,
+    val acceptableDb: Double = LinkThresholds().acceptableDb,
+    val criteriaSummary: String = "",
     val thresholdFields: List<ThresholdFieldUi> = emptyList(),
     val thresholdError: String? = null,
     val acceptUnknownHops: Boolean = false,
@@ -79,6 +86,91 @@ interface MeasurementActions {
     fun onThresholdChange(field: ThresholdField, text: String)
     fun onAcceptUnknownHopsChange(accept: Boolean)
     fun exportCsv(): String
+}
+
+/** Todo lo que la pantalla de medición necesita, en un momento dado. */
+internal data class MeasurementSnapshot(
+    val messages: List<Message>,
+    val nodes: List<MeshNode> = emptyList(),
+    val myNodeNum: Int? = null,
+    val parameters: LinkParameters = LinkParameters(),
+    val thresholds: LinkThresholds = LinkThresholds(),
+    val acceptUnknownHops: Boolean = false,
+    val drafts: Map<ThresholdField, String> = emptyMap(),
+    val thresholdError: Pair<ThresholdField, String>? = null,
+    val exportNotice: String? = null,
+    val sessionStartMs: Long = 0L,
+)
+
+private const val CHART_MAX_BARS = 40
+
+internal fun MeasurementSnapshot.toUiState(): MeasurementUiState {
+    val received = messages.mapNotNull { m -> m.signalQuality?.let { m to it } }
+    val valid = received.filter { (_, q) -> q.validity(acceptUnknownHops) == MeasurementValidity.VALID }
+    val rows = valid.map { (m, q) -> row(m, q) }
+
+    val avgWorst = rows.takeIf { it.isNotEmpty() }?.map { it.evaluation.margin.worstDb }?.average()
+    val avgExtra = rows.takeIf { it.isNotEmpty() }?.map { it.evaluation.extraLossDb }?.average()
+    val overall = avgWorst?.let { thresholds.classify(it) }
+    val chart = rows.takeLast(CHART_MAX_BARS).map { ChartBar(it.evaluation.margin.worstDb, it.level) }
+
+    return MeasurementUiState(
+        rows = rows.asReversed(),
+        discarded = received.size - valid.size,
+        distance = "${formatInput(parameters.distanceKm)}\u00A0km",
+        averageWorstMargin = avgWorst?.let { "${formatDecimal(it)} dB" },
+        averageExtraLoss = avgExtra?.let { "${formatDecimal(it)} dB" },
+        overallLevel = overall,
+        overallLevelLabel = overall?.label(),
+        overallCaption = if (avgWorst == null) {
+            "Todavía no hay mediciones válidas"
+        } else {
+            "${count(rows.size, "medición válida", "mediciones válidas")} · " +
+                count(received.size - valid.size, "descartada", "descartadas")
+        },
+        chart = chart,
+        chartDescription = if (chart.isEmpty()) "" else
+            "Margen de las últimas ${chart.size} mediciones, entre ${formatDecimal(chart.minOf { it.marginDb })} " +
+                "y ${formatDecimal(chart.maxOf { it.marginDb })} dB",
+        solidDb = thresholds.solidDb,
+        acceptableDb = thresholds.acceptableDb,
+        // espacio irrompible entre número y unidad
+        criteriaSummary = "Sólido ≥\u00A0${formatInput(thresholds.solidDb)}\u00A0dB · Aceptable ≥\u00A0${formatInput(thresholds.acceptableDb)}\u00A0dB · " +
+            "Frágil ≥\u00A0${formatInput(thresholds.fragileDb)}\u00A0dB",
+        thresholdFields = ThresholdField.entries.map { f ->
+            val value = when (f) {
+                ThresholdField.SOLID -> thresholds.solidDb
+                ThresholdField.ACCEPTABLE -> thresholds.acceptableDb
+            }
+            val text = drafts[f] ?: formatInput(value)
+            ThresholdFieldUi(f, text, isError = parseDecimal(text) == null || thresholdError?.first == f)
+        },
+        thresholdError = thresholdError?.second,
+        acceptUnknownHops = acceptUnknownHops,
+        canExport = messages.isNotEmpty(),
+        exportNotice = exportNotice,
+    )
+}
+
+private fun count(n: Int, singular: String, plural: String) = "$n ${if (n == 1) singular else plural}"
+
+private fun MeasurementSnapshot.row(m: Message, q: LinkQuality): MeasurementRow {
+    val e = q.evaluate(parameters, thresholds)
+    return MeasurementRow(
+        messageId = m.id,
+        fromLabel = nodeLabel(m.fromNodeId, nodes, myNodeNum),
+        elapsed = formatElapsed(sessionStartMs, m.timeStampMs),
+        evaluation = e,
+        rssi = "${formatDecimal(q.rssiDbm.toDouble(), 0)} dBm",
+        snr = "${formatDecimal(q.snrDb.toDouble())} dB",
+        rssiMargin = "${formatDecimal(e.margin.rssiMarginDb)} dB",
+        snrMargin = "${formatDecimal(e.margin.snrMarginDb)} dB",
+        worstMargin = "${formatDecimal(e.margin.worstDb)} dB",
+        level = e.level,
+        levelLabel = e.level.label(),
+        expectedRssi = "${formatDecimal(e.expectedRssiDbm)} dBm",
+        extraLoss = "${formatDecimal(e.extraLossDb)} dB",
+    )
 }
 
 class MeasurementViewModel(
@@ -110,8 +202,20 @@ class MeasurementViewModel(
     private val criteria = combine(settings.parameters, settings.thresholds, settings.acceptUnknownHops, ::Criteria)
 
     val uiState: StateFlow<MeasurementUiState> =
-        combine(inputs, criteria, drafts, thresholdError, exportNotice, ::build)
-            .stateIn(viewModelScope, SharingStarted.Eagerly, MeasurementUiState())
+        combine(inputs, criteria, drafts, thresholdError, exportNotice) { inputs, criteria, drafts, error, notice ->
+            MeasurementSnapshot(
+                messages = inputs.messages,
+                nodes = inputs.nodes,
+                myNodeNum = inputs.myNodeNum,
+                parameters = criteria.parameters,
+                thresholds = criteria.thresholds,
+                acceptUnknownHops = criteria.acceptUnknownHops,
+                drafts = drafts,
+                thresholdError = error,
+                exportNotice = notice,
+                sessionStartMs = sessionStartMs,
+            ).toUiState()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, MeasurementUiState())
 
     override fun onThresholdChange(field: ThresholdField, text: String) {
         drafts.update { it + (field to text) }
@@ -144,64 +248,5 @@ class MeasurementViewModel(
             settings.thresholds.value,
             settings.acceptUnknownHops.value,
         ) { nodeLabel(it, nodes, me) }
-    }
-
-    private fun build(
-        inputs: Inputs,
-        criteria: Criteria,
-        drafts: Map<ThresholdField, String>,
-        thresholdError: Pair<ThresholdField, String>?,
-        exportNotice: String?,
-    ): MeasurementUiState {
-        val received = inputs.messages.mapNotNull { m -> m.signalQuality?.let { m to it } }
-        val valid = received.filter { (_, q) -> q.validity(criteria.acceptUnknownHops) == MeasurementValidity.VALID }
-        val rows = valid.map { (m, q) -> row(m, q, inputs, criteria) }
-
-        val avgWorst = rows.takeIf { it.isNotEmpty() }?.map { it.evaluation.margin.worstDb }?.average()
-        val avgExtra = rows.takeIf { it.isNotEmpty() }?.map { it.evaluation.extraLossDb }?.average()
-        val overall = avgWorst?.let { criteria.thresholds.classify(it) }
-
-        return MeasurementUiState(
-            rows = rows,
-            discarded = received.size - valid.size,
-            distance = "${formatInput(criteria.parameters.distanceKm)} km",
-            averageWorstMargin = avgWorst?.let { "${formatDecimal(it)} dB" },
-            averageExtraLoss = avgExtra?.let { "${formatDecimal(it)} dB" },
-            overallLevel = overall,
-            overallLevelLabel = overall?.let { "${it.label()} (según el margen promedio)" },
-            thresholdFields = ThresholdField.entries.map { f ->
-                val value = when (f) {
-                    ThresholdField.SOLID -> criteria.thresholds.solidDb
-                    ThresholdField.ACCEPTABLE -> criteria.thresholds.acceptableDb
-                }
-                val text = drafts[f] ?: formatInput(value)
-                ThresholdFieldUi(f, text, isError = parseDecimal(text) == null || thresholdError?.first == f)
-            },
-            thresholdError = thresholdError?.second,
-            acceptUnknownHops = criteria.acceptUnknownHops,
-            canExport = inputs.messages.isNotEmpty(),
-            exportNotice = exportNotice,
-        )
-    }
-
-    private fun row(m: Message, q: LinkQuality, inputs: Inputs, criteria: Criteria): MeasurementRow {
-        val e = q.evaluate(criteria.parameters, criteria.thresholds)
-        return MeasurementRow(
-            messageId = m.id,
-            fromLabel = nodeLabel(m.fromNodeId, inputs.nodes, inputs.myNodeNum),
-            elapsed = formatElapsed(sessionStartMs, m.timeStampMs),
-            rssiDbm = q.rssiDbm.toDouble(),
-            snrDb = q.snrDb.toDouble(),
-            evaluation = e,
-            rssi = "${formatDecimal(q.rssiDbm.toDouble(), 0)} dBm",
-            snr = "${formatDecimal(q.snrDb.toDouble())} dB",
-            rssiMargin = "${formatDecimal(e.margin.rssiMarginDb)} dB",
-            snrMargin = "${formatDecimal(e.margin.snrMarginDb)} dB",
-            worstMargin = "${formatDecimal(e.margin.worstDb)} dB",
-            level = e.level,
-            levelLabel = e.level.label(),
-            expectedRssi = "${formatDecimal(e.expectedRssiDbm)} dBm",
-            extraLoss = "${formatDecimal(e.extraLossDb)} dB",
-        )
     }
 }
