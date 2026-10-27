@@ -73,58 +73,76 @@ enum class ModemPreset(val spreadingFactor: SpreadingFactor, val bandwidthHz: Do
     LONG_MODERATE(SpreadingFactor.SF11, LoraBandwidth.KHZ_125_IN_HZ),
     LONG_SLOW(SpreadingFactor.SF12, LoraBandwidth.KHZ_125_IN_HZ);
 
-    // SRX = N (ruido térmico) + NF (índice de ruido) + SNR mínimo
     fun sensitivityDbm(
         noiseFigureDb: Double = DEFAULT_NOISE_FIGURE_DB,
         temperatureC: Double = ThermalNoise.STANDARD_TEMPERATURE_C,
-    ): Double =
-        ThermalNoise.powerDbm(bandwidthHz, temperatureC) +
-                noiseFigureDb +
-                spreadingFactor.requiredSnrDb
+    ): Double = Sensitivity.dbm(bandwidthHz, spreadingFactor, noiseFigureDb, temperatureC)
 
     companion object {
         const val DEFAULT_NOISE_FIGURE_DB = 6.0   // valor típico de los chips SX126x
     }
 }
 
+object Sensitivity {
+    // SRX = N (ruido térmico) + NF (índice de ruido) + SNR mínimo
+    fun dbm(
+        bandwidthHz: Double,
+        spreadingFactor: SpreadingFactor,
+        noiseFigureDb: Double = ModemPreset.DEFAULT_NOISE_FIGURE_DB,
+        temperatureC: Double = ThermalNoise.STANDARD_TEMPERATURE_C,
+    ): Double =
+        ThermalNoise.powerDbm(bandwidthHz, temperatureC) +
+                noiseFigureDb +
+                spreadingFactor.requiredSnrDb
+}
+
 // =====================================================================
 // Margen de una medición real
 // =====================================================================
 
-// niveles de enlace: Solido, Marginal y No confiable
-// con esto evaluamos que tna confiable es la señal
-enum class LinkLevel { SOLID, MARGINAL, UNRELIABLE }
+// niveles del semáforo
+enum class LinkLevel { SOLID, ACCEPTABLE, FRAGILE, UNRELIABLE }
+
+// Umbrales en dB. Los 20 dB de "sólido" son un criterio de diseño propio
+// (variación en exteriores), no una norma.
+data class LinkThresholds(
+    val solidDb: Double = 20.0,
+    val acceptableDb: Double = 10.0,
+    val fragileDb: Double = 0.0,
+) {
+    init {
+        require(solidDb >= acceptableDb && acceptableDb >= fragileDb) {
+            "Los umbrales deben ir de mayor a menor"
+        }
+    }
+
+    fun classify(marginDb: Double): LinkLevel = when {
+        marginDb >= solidDb -> LinkLevel.SOLID
+        marginDb >= acceptableDb -> LinkLevel.ACCEPTABLE
+        marginDb >= fragileDb -> LinkLevel.FRAGILE
+        else -> LinkLevel.UNRELIABLE
+    }
+}
 
 data class LinkMargin(val rssiMarginDb: Double, val snrMarginDb: Double) {
 
     // se clasifica según el peor de los dos márgenes
-    val level: LinkLevel
-        get() {
-            val worst = minOf(rssiMarginDb, snrMarginDb)
+    val worstDb: Double get() = minOf(rssiMarginDb, snrMarginDb)
 
-            // when es un switch de kotlin
-            return when {
-                worst >= SOLID_THRESHOLD_DB -> LinkLevel.SOLID
-                worst >= USABLE_THRESHOLD_DB -> LinkLevel.MARGINAL
-                else -> LinkLevel.UNRELIABLE
-            }
-        }
-
-    // companion en kotlin es static. Una funcion que no requiere instancia.
-    companion object {
-        const val SOLID_THRESHOLD_DB = 10.0   // margen que tolera desvanecimientos
-        const val USABLE_THRESHOLD_DB = 0.0   // por debajo, el receptor no entiende la señal
-    }
+    fun level(thresholds: LinkThresholds = LinkThresholds()): LinkLevel = thresholds.classify(worstDb)
 }
 
 // MARGEN = RSSI − SRX, más el margen de SNR propio de LoRa
+fun LinkQuality.margin(sensitivityDbm: Double, spreadingFactor: SpreadingFactor) =
+    LinkMargin(
+        rssiMarginDb = rssiDbm - sensitivityDbm,
+        snrMarginDb = snrDb - spreadingFactor.requiredSnrDb,
+    )
+
 fun LinkQuality.margin(
     preset: ModemPreset,
-    noiseFigureDb: Double = ModemPreset.DEFAULT_NOISE_FIGURE_DB) =
-    LinkMargin(
-    rssiMarginDb = rssiDbm - preset.sensitivityDbm(noiseFigureDb),
-    snrMarginDb = snrDb - preset.spreadingFactor.requiredSnrDb,
-)
+    noiseFigureDb: Double = ModemPreset.DEFAULT_NOISE_FIGURE_DB,
+) = margin(preset.sensitivityDbm(noiseFigureDb), preset.spreadingFactor)
 
 // =====================================================================
 // Balance de enlace (predicción)

@@ -58,14 +58,14 @@ class LinkCalculationsTest {
         val m = LinkQuality(rssiDbm = -95.0f, snrDb = 4f, hops = 0).margin(ModemPreset.LONG_FAST)
         assertEquals(36.5, m.rssiMarginDb, 0.05)
         assertEquals(21.5, m.snrMarginDb, 0.01)
-        assertEquals(LinkLevel.SOLID, m.level)
+        assertEquals(LinkLevel.SOLID, m.level())
     }
 
     // SNR −19 con LongFast (mínimo −17,5) => no confiable
     @Test
     fun margenDeUnaMedicionAlLimite() {
         val m = LinkQuality(rssiDbm = -128.0f, snrDb = -19f, hops = 0).margin(ModemPreset.LONG_FAST)
-        assertEquals(LinkLevel.UNRELIABLE, m.level)
+        assertEquals(LinkLevel.UNRELIABLE, m.level())
     }
 
     // en la distancia máxima, el RSSI predicho queda en SRX + margen de seguridad
