@@ -19,6 +19,8 @@ kotlin {
         }
     }
 
+    jvm()
+
     android {
         namespace = "com.example.meshviability.shared"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -56,6 +58,9 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+        }
+        jvmMain.dependencies {
+            implementation(libs.jserialcomm)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
