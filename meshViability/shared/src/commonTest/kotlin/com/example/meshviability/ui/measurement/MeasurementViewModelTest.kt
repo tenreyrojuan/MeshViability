@@ -50,7 +50,7 @@ class MeasurementViewModelTest {
         assertEquals("Sólido", row.levelLabel)
         assertEquals("-71,7 dBm", row.expectedRssi)
         assertEquals("23,3 dB", row.extraLoss)
-        assertEquals("Sólido", vm.uiState.value.overallLevelLabel)
+        assertEquals("Sólido (según el margen promedio)", vm.uiState.value.overallLevelLabel)
     }
 
     @Test

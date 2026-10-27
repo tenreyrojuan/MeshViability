@@ -143,7 +143,7 @@ class MeasurementViewModel(
             averageWorstMargin = avgWorst?.let { "${formatDecimal(it)} dB" },
             averageExtraLoss = avgExtra?.let { "${formatDecimal(it)} dB" },
             overallLevel = overall,
-            overallLevelLabel = overall?.label(),
+            overallLevelLabel = overall?.let { "${it.label()} (según el margen promedio)" },
             thresholdFields = ThresholdField.entries.map { f ->
                 val value = when (f) {
                     ThresholdField.SOLID -> criteria.thresholds.solidDb
