@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.meshviability.data.transport.RadioLink
 import com.example.meshviability.ui.SessionViewModel
@@ -28,6 +29,7 @@ private val tabs = listOf("Mensajería", "Predicción", "Medición")
 
 // platformLinks: Bluetooth en Android, USB en escritorio. El nodo simulado se agrega siempre.
 @Composable
+@Preview
 fun App(platformLinks: List<RadioLink> = emptyList()) {
     val session = viewModel { SessionViewModel(platformLinks) }
     val messaging = viewModel {
