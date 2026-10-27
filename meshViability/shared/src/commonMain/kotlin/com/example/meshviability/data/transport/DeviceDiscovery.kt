@@ -9,3 +9,10 @@ interface DeviceDiscovery {
 }
 
 class RadioUnavailableException(message: String) : Exception(message)
+
+// lo encontrado y, aparte, por qué no se pudo buscar en algún medio (Bluetooth, USB)
+data class ScanResult(val devices: List<RadioDevice>, val problems: List<String>)
+
+interface NodeScanner {
+    suspend fun scan(): ScanResult
+}

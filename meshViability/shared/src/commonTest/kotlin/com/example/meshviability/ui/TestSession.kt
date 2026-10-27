@@ -3,9 +3,9 @@ package com.example.meshviability.ui
 import com.example.meshviability.data.protocol.MeshProtocolClient
 import com.example.meshviability.data.repository.LinkSettingsRepository
 import com.example.meshviability.data.repository.MeshRepository
-import com.example.meshviability.data.transport.DeviceDiscovery
 import com.example.meshviability.data.transport.FakeTransport
-import com.example.meshviability.data.transport.RadioDevice
+import com.example.meshviability.data.transport.NodeScanner
+import com.example.meshviability.data.transport.ScanResult
 import kotlinx.coroutines.CoroutineScope
 import okio.ByteString.Companion.encodeUtf8
 import org.meshtastic.proto.Data
@@ -36,6 +36,6 @@ class TestSession(scope: CoroutineScope, connectError: String? = null) {
     }
 }
 
-class TestDiscovery(private val result: () -> List<RadioDevice>) : DeviceDiscovery {
-    override suspend fun devices(): List<RadioDevice> = result()
+class TestScanner(private val result: () -> ScanResult) : NodeScanner {
+    override suspend fun scan(): ScanResult = result()
 }

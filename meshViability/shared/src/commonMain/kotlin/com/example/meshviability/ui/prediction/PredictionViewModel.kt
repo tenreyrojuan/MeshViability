@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
 private const val HZ_PER_KHZ = 1000.0
+private const val NO_NODE_SUMMARY = "Sin nodo conectado: parámetros ingresados a mano"
 
 enum class LinkField(
     val label: String,
@@ -46,6 +47,7 @@ data class FieldUi(
     val text: String,
     val isError: Boolean,
     val fromNode: Boolean,
+    val supportingText: String?,
 )
 
 data class PredictionResultUi(
@@ -61,7 +63,8 @@ data class PredictionUiState(
     val fields: List<FieldUi> = emptyList(),
     val spreadingFactor: SpreadingFactor = SpreadingFactor.SF11,
     val spreadingFactorFromNode: Boolean = false,
-    val nodeSummary: String? = null,
+    val spreadingFactorLabel: String = "Factor de dispersión",
+    val nodeSummary: String = NO_NODE_SUMMARY,
     val result: PredictionResultUi? = null,
 )
 
@@ -87,16 +90,29 @@ class PredictionViewModel(
     private fun build(params: LinkParameters, drafts: Map<LinkField, String>, node: LoraSettings?): PredictionUiState {
         val fields = LinkField.entries.map { field ->
             val text = shownText(field, params, drafts[field])
-            FieldUi(field, text, isError = field.parse(text) == null, fromNode = field in fieldsFromNode(node))
+            val isError = field.parse(text) == null
+            val fromNode = field in fieldsFromNode(node)
+            FieldUi(
+                field = field,
+                text = text,
+                isError = isError,
+                fromNode = fromNode,
+                supportingText = when {
+                    isError -> if (field.mustBePositive) "Número mayor que 0" else "Número inválido"
+                    fromNode -> "Informado por el nodo"
+                    else -> field.hint
+                },
+            )
         }
         val p = params.predict()
         return PredictionUiState(
             fields = fields,
             spreadingFactor = params.spreadingFactor,
             spreadingFactorFromNode = node?.spreadingFactor != null,
+            spreadingFactorLabel = if (node?.spreadingFactor != null) "Factor de dispersión (del nodo)" else "Factor de dispersión",
             nodeSummary = node?.let { s ->
-                listOfNotNull(s.preset?.name ?: "Parámetros manuales", "Región ${s.region}").joinToString(" · ")
-            },
+                "Configuración del nodo: ${s.preset?.name ?: "parámetros manuales"} · Región ${s.region}"
+            } ?: NO_NODE_SUMMARY,
             result = if (fields.any { it.isError }) null else PredictionResultUi(
                 noise = "${formatDecimal(p.noiseDbm)} dBm",
                 sensitivity = "${formatDecimal(p.sensitivityDbm)} dBm",

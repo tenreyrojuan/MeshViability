@@ -1,9 +1,9 @@
 package com.example.meshviability.ui.messaging
 
 import com.example.meshviability.data.transport.RadioDevice
-import com.example.meshviability.data.transport.RadioUnavailableException
+import com.example.meshviability.data.transport.ScanResult
 import com.example.meshviability.domain.entities.MessageStatus
-import com.example.meshviability.ui.TestDiscovery
+import com.example.meshviability.ui.TestScanner
 import com.example.meshviability.ui.TestSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,8 +34,8 @@ class MessagingViewModelTest {
 
     private fun TestScope.viewModel(
         session: TestSession = TestSession(backgroundScope),
-        discovery: TestDiscovery = TestDiscovery { listOf(nodoB) },
-    ) = MessagingViewModel(session.repository, session.settings, discovery, sessionStartMs = 0L)
+        scanner: TestScanner = TestScanner { ScanResult(listOf(nodoB), emptyList()) },
+    ) = MessagingViewModel(session.repository, session.settings, scanner, sessionStartMs = 0L)
 
     @Test
     fun conectarYEnviarUnicastAlNodoB() = runTest {
@@ -63,6 +63,7 @@ class MessagingViewModelTest {
         assertTrue(msg.mine)
         assertEquals("Nodo B", msg.toLabel)
         assertEquals(MessageStatus.PENDING, msg.status)
+        assertEquals("Pendiente", msg.statusLabel)
         assertEquals("", vm.uiState.value.draft)
         assertEquals(0x5678, session.fake.sent.last().packet!!.to)
     }
@@ -80,11 +81,12 @@ class MessagingViewModelTest {
 
     @Test
     fun permisoDenegadoAlBuscarNodos() = runTest {
-        val vm = viewModel(discovery = TestDiscovery { throw RadioUnavailableException("Falta el permiso de Bluetooth") })
+        val vm = viewModel(scanner = TestScanner { ScanResult(listOf(nodoB), listOf("Falta el permiso de Bluetooth")) })
         vm.scan()
         runCurrent()
 
-        assertEquals("No se pudieron buscar nodos: Falta el permiso de Bluetooth", vm.uiState.value.error)
+        assertEquals(listOf(nodoB), vm.uiState.value.devices)
+        assertEquals("Falta el permiso de Bluetooth", vm.uiState.value.error)
         assertFalse(vm.uiState.value.isBusy)
     }
 

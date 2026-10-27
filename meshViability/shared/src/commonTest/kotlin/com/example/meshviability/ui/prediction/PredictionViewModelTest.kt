@@ -100,6 +100,7 @@ class PredictionViewModelTest {
         assertFalse(s.field(LinkField.FREQUENCY).fromNode)
         assertEquals(SpreadingFactor.SF9, s.spreadingFactor)
         assertTrue(s.spreadingFactorFromNode)
-        assertEquals("MEDIUM_FAST · Región US", s.nodeSummary)
+        assertEquals("Configuración del nodo: MEDIUM_FAST · Región US", s.nodeSummary)
+        assertEquals("Informado por el nodo", s.field(LinkField.TX_POWER).supportingText)
     }
 }

@@ -6,7 +6,7 @@ import com.example.meshviability.data.protocol.MeshProtocolClient
 import com.example.meshviability.data.protocol.MeshState
 import com.example.meshviability.data.repository.LinkSettingsRepository
 import com.example.meshviability.data.repository.MeshRepository
-import com.example.meshviability.data.transport.DeviceDiscovery
+import com.example.meshviability.data.transport.NodeScanner
 import com.example.meshviability.data.transport.RadioDevice
 import com.example.meshviability.domain.entities.MeshNode
 import com.example.meshviability.domain.entities.Message
@@ -35,6 +35,7 @@ data class MessageItem(
     val content: String,
     val elapsed: String,
     val status: MessageStatus?,     // solo en los enviados
+    val statusLabel: String?,
     val signal: String?,            // "RSSI −95 dBm · SNR 4,3 dB · 0 saltos"
     val validForMeasurement: Boolean,
     val validityNote: String?,      // por qué no sirve para medir
@@ -58,7 +59,7 @@ data class MessagingUiState(
 class MessagingViewModel(
     private val repository: MeshRepository,
     private val settings: LinkSettingsRepository,
-    private val discovery: DeviceDiscovery,
+    private val scanner: NodeScanner,
     private val sessionStartMs: Long,
 ) : ViewModel() {
 
@@ -126,14 +127,20 @@ class MessagingViewModel(
     private fun Message.toItem(me: Int?, nodes: List<MeshNode>, acceptUnknownHops: Boolean): MessageItem {
         val q = signalQuality
         val validity = q?.validity(acceptUnknownHops)
+        val mine = me != null && fromNodeId == me
         return MessageItem(
             id = id,
-            mine = me != null && fromNodeId == me,
+            mine = mine,
             fromLabel = nodeLabel(fromNodeId, nodes, me),
             toLabel = nodeLabel(toNodeId, nodes, me),
             content = content,
             elapsed = formatElapsed(sessionStartMs, timeStampMs),
-            status = status.takeIf { me != null && fromNodeId == me },
+            status = status.takeIf { mine },
+            statusLabel = if (!mine) null else when (status) {
+                MessageStatus.PENDING -> "Pendiente"
+                MessageStatus.DELIVERED -> "Entregado"
+                MessageStatus.FAILED -> "Fallido"
+            },
             signal = q?.let {
                 val hops = it.hops?.let { h -> " · $h saltos" } ?: " · saltos desconocidos"
                 "RSSI ${formatDecimal(it.rssiDbm.toDouble(), 0)} dBm · SNR ${formatDecimal(it.snrDb.toDouble())} dB$hops"
@@ -155,10 +162,13 @@ class MessagingViewModel(
     fun dismissError() = local.update { it.copy(error = null) }
 
     fun scan() = runBusy("No se pudieron buscar nodos") {
-        val devices = discovery.devices()
-        local.update {
-            it.copy(devices = devices, error = if (devices.isEmpty()) "No se encontró ningún nodo" else null)
+        val result = scanner.scan()
+        val error = when {
+            result.problems.isNotEmpty() -> result.problems.joinToString("\n")
+            result.devices.isEmpty() -> "No se encontró ningún nodo"
+            else -> null
         }
+        local.update { it.copy(devices = result.devices, error = error) }
     }
 
     fun connect(device: RadioDevice) = runBusy("No se pudo conectar") {
