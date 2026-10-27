@@ -33,27 +33,32 @@ import com.example.meshviability.ui.color
 @Composable
 fun MessagingScreen(viewModel: MessagingViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    MessagingContent(state, viewModel, modifier)
+}
+
+@Composable
+fun MessagingContent(state: MessagingUiState, actions: MessagingActions, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ConnectionCard(state, viewModel)
-        state.error?.let { ErrorBanner(it, viewModel::dismissError) }
-        if (state.isConnected) DestinationPicker(state, viewModel::onDestinationSelected)
+        ConnectionCard(state, actions)
+        state.error?.let { ErrorBanner(it, actions::dismissError) }
+        if (state.isConnected) DestinationPicker(state, actions::onDestinationSelected)
         MessageList(state.messages, Modifier.weight(1f))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = state.draft,
-                onValueChange = viewModel::onDraftChange,
+                onValueChange = actions::onDraftChange,
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Mensaje") },
                 singleLine = true,
             )
-            Button(onClick = viewModel::send, enabled = state.canSend) { Text("Enviar") }
+            Button(onClick = actions::send, enabled = state.canSend) { Text("Enviar") }
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ConnectionCard(state: MessagingUiState, viewModel: MessagingViewModel) {
+private fun ConnectionCard(state: MessagingUiState, actions: MessagingActions) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(state.statusText, style = MaterialTheme.typography.titleMedium)
@@ -62,12 +67,12 @@ private fun ConnectionCard(state: MessagingUiState, viewModel: MessagingViewMode
                 Text("Paquetes inválidos descartados: ${state.invalidPackets}", style = MaterialTheme.typography.bodySmall)
             }
             if (state.isConnected) {
-                OutlinedButton(onClick = viewModel::disconnect, enabled = !state.isBusy) { Text("Desconectar") }
+                OutlinedButton(onClick = actions::disconnect, enabled = !state.isBusy) { Text("Desconectar") }
             } else {
-                OutlinedButton(onClick = viewModel::scan, enabled = !state.isBusy) { Text("Buscar nodos") }
+                OutlinedButton(onClick = actions::scan, enabled = !state.isBusy) { Text("Buscar nodos") }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.devices.forEach { device ->
-                        Button(onClick = { viewModel.connect(device) }, enabled = !state.isBusy) { Text(device.name) }
+                        Button(onClick = { actions.connect(device) }, enabled = !state.isBusy) { Text(device.name) }
                     }
                 }
             }

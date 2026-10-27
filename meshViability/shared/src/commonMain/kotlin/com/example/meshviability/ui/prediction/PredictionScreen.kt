@@ -25,10 +25,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.meshviability.domain.link.SpreadingFactor
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PredictionScreen(viewModel: PredictionViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    PredictionContent(state, viewModel, modifier)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PredictionContent(state: PredictionUiState, actions: PredictionActions, modifier: Modifier = Modifier) {
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -41,7 +46,7 @@ fun PredictionScreen(viewModel: PredictionViewModel, modifier: Modifier = Modifi
             SpreadingFactor.entries.forEach { sf ->
                 FilterChip(
                     selected = sf == state.spreadingFactor,
-                    onClick = { viewModel.onSpreadingFactorChange(sf) },
+                    onClick = { actions.onSpreadingFactorChange(sf) },
                     label = { Text(sf.name) },
                 )
             }
@@ -50,7 +55,7 @@ fun PredictionScreen(viewModel: PredictionViewModel, modifier: Modifier = Modifi
         state.fields.forEach { f ->
             OutlinedTextField(
                 value = f.text,
-                onValueChange = { viewModel.onFieldChange(f.field, it) },
+                onValueChange = { actions.onFieldChange(f.field, it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("${f.field.label} (${f.field.unit})") },
                 isError = f.isError,

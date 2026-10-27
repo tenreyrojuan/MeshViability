@@ -36,12 +36,17 @@ import com.example.meshviability.ui.color
 @Composable
 fun MeasurementScreen(viewModel: MeasurementViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    MeasurementContent(state, viewModel, modifier)
+}
+
+@Composable
+fun MeasurementContent(state: MeasurementUiState, actions: MeasurementActions, modifier: Modifier = Modifier) {
     LazyColumn(
         modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { SummaryCard(state, viewModel) }
-        item { CriteriaCard(state, viewModel) }
+        item { SummaryCard(state, actions) }
+        item { CriteriaCard(state, actions) }
         if (state.rows.isEmpty()) {
             item {
                 Text(
@@ -61,7 +66,7 @@ private fun LevelDot(level: LinkLevel) {
 
 @Suppress("DEPRECATION") // LocalClipboard pide un ClipEntry distinto por plataforma
 @Composable
-private fun SummaryCard(state: MeasurementUiState, viewModel: MeasurementViewModel) {
+private fun SummaryCard(state: MeasurementUiState, actions: MeasurementActions) {
     val clipboard = LocalClipboardManager.current
     Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -72,7 +77,7 @@ private fun SummaryCard(state: MeasurementUiState, viewModel: MeasurementViewMod
             Text("Mediciones válidas: ${state.rows.size} · descartadas: ${state.discarded}")
             state.averageWorstMargin?.let { Text("Margen promedio (peor de RSSI y SNR): $it") }
             state.averageExtraLoss?.let { Text("Pérdida extra promedio vs. espacio libre a ${state.distance}: $it") }
-            OutlinedButton(onClick = { clipboard.setText(AnnotatedString(viewModel.exportCsv())) }, enabled = state.canExport) {
+            OutlinedButton(onClick = { clipboard.setText(AnnotatedString(actions.exportCsv())) }, enabled = state.canExport) {
                 Text("Copiar sesión como CSV")
             }
             state.exportNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -81,7 +86,7 @@ private fun SummaryCard(state: MeasurementUiState, viewModel: MeasurementViewMod
 }
 
 @Composable
-private fun CriteriaCard(state: MeasurementUiState, viewModel: MeasurementViewModel) {
+private fun CriteriaCard(state: MeasurementUiState, actions: MeasurementActions) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Criterios del semáforo (dB)", style = MaterialTheme.typography.labelLarge)
@@ -89,7 +94,7 @@ private fun CriteriaCard(state: MeasurementUiState, viewModel: MeasurementViewMo
                 state.thresholdFields.forEach { f ->
                     OutlinedTextField(
                         value = f.text,
-                        onValueChange = { viewModel.onThresholdChange(f.field, it) },
+                        onValueChange = { actions.onThresholdChange(f.field, it) },
                         modifier = Modifier.weight(1f),
                         label = { Text(f.field.label) },
                         isError = f.isError,
@@ -101,7 +106,7 @@ private fun CriteriaCard(state: MeasurementUiState, viewModel: MeasurementViewMo
             state.thresholdError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Contar paquetes con saltos desconocidos (firmware < 2.3)", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                Switch(checked = state.acceptUnknownHops, onCheckedChange = viewModel::onAcceptUnknownHopsChange)
+                Switch(checked = state.acceptUnknownHops, onCheckedChange = actions::onAcceptUnknownHopsChange)
             }
         }
     }

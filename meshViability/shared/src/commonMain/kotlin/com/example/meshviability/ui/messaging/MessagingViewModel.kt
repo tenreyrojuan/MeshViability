@@ -56,12 +56,23 @@ data class MessagingUiState(
     val error: String? = null,
 )
 
+// lo que la pantalla puede pedir; la implementa el ViewModel (y un objeto vacío en los previews)
+interface MessagingActions {
+    fun onDraftChange(text: String)
+    fun onDestinationSelected(num: Int)
+    fun dismissError()
+    fun scan()
+    fun connect(device: RadioDevice)
+    fun disconnect()
+    fun send()
+}
+
 class MessagingViewModel(
     private val repository: MeshRepository,
     private val settings: LinkSettingsRepository,
     private val scanner: NodeScanner,
     private val sessionStartMs: Long,
-) : ViewModel() {
+) : ViewModel(), MessagingActions {
 
     private data class Local(
         val draft: String = "",
@@ -155,13 +166,13 @@ class MessagingViewModel(
         )
     }
 
-    fun onDraftChange(text: String) = local.update { it.copy(draft = text) }
+    override fun onDraftChange(text: String) = local.update { it.copy(draft = text) }
 
-    fun onDestinationSelected(num: Int) = local.update { it.copy(selectedDestination = num) }
+    override fun onDestinationSelected(num: Int) = local.update { it.copy(selectedDestination = num) }
 
-    fun dismissError() = local.update { it.copy(error = null) }
+    override fun dismissError() = local.update { it.copy(error = null) }
 
-    fun scan() = runBusy("No se pudieron buscar nodos") {
+    override fun scan() = runBusy("No se pudieron buscar nodos") {
         val result = scanner.scan()
         val error = when {
             result.problems.isNotEmpty() -> result.problems.joinToString("\n")
@@ -171,15 +182,15 @@ class MessagingViewModel(
         local.update { it.copy(devices = result.devices, error = error) }
     }
 
-    fun connect(device: RadioDevice) = runBusy("No se pudo conectar") {
+    override fun connect(device: RadioDevice) = runBusy("No se pudo conectar") {
         repository.connect(device.address)
     }
 
-    fun disconnect() = runBusy("No se pudo desconectar") {
+    override fun disconnect() = runBusy("No se pudo desconectar") {
         repository.disconnect()
     }
 
-    fun send() {
+    override fun send() {
         val state = uiState.value
         val text = state.draft.trim()
         if (text.isEmpty()) return

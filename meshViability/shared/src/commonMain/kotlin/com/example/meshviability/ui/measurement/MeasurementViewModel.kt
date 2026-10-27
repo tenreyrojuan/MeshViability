@@ -75,11 +75,17 @@ fun LinkLevel.label(): String = when (this) {
     LinkLevel.UNRELIABLE -> "No confiable"
 }
 
+interface MeasurementActions {
+    fun onThresholdChange(field: ThresholdField, text: String)
+    fun onAcceptUnknownHopsChange(accept: Boolean)
+    fun exportCsv(): String
+}
+
 class MeasurementViewModel(
     private val repository: MeshRepository,
     private val settings: LinkSettingsRepository,
     private val sessionStartMs: Long,
-) : ViewModel() {
+) : ViewModel(), MeasurementActions {
 
     private data class Inputs(
         val messages: List<Message>,
@@ -107,7 +113,7 @@ class MeasurementViewModel(
         combine(inputs, criteria, drafts, thresholdError, exportNotice, ::build)
             .stateIn(viewModelScope, SharingStarted.Eagerly, MeasurementUiState())
 
-    fun onThresholdChange(field: ThresholdField, text: String) {
+    override fun onThresholdChange(field: ThresholdField, text: String) {
         drafts.update { it + (field to text) }
         val value = parseDecimal(text) ?: return
         val current = settings.thresholds.value
@@ -124,10 +130,10 @@ class MeasurementViewModel(
         }
     }
 
-    fun onAcceptUnknownHopsChange(accept: Boolean) = settings.setAcceptUnknownHops(accept)
+    override fun onAcceptUnknownHopsChange(accept: Boolean) = settings.setAcceptUnknownHops(accept)
 
     // la sesión completa, para pegarla en una planilla
-    fun exportCsv(): String {
+    override fun exportCsv(): String {
         val me = (repository.state.value as? MeshState.Ready)?.myNodeNum
         val nodes = repository.remoteNodes.value
         val messages = repository.messages.value

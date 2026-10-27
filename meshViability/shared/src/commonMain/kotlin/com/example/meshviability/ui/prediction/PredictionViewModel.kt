@@ -68,10 +68,15 @@ data class PredictionUiState(
     val result: PredictionResultUi? = null,
 )
 
+interface PredictionActions {
+    fun onFieldChange(field: LinkField, text: String)
+    fun onSpreadingFactorChange(sf: SpreadingFactor)
+}
+
 class PredictionViewModel(
     private val settings: LinkSettingsRepository,
     nodeSettings: StateFlow<LoraSettings?>,
-) : ViewModel() {
+) : ViewModel(), PredictionActions {
 
     // lo que el usuario escribió, aunque todavía no sea un número válido
     private val drafts = MutableStateFlow<Map<LinkField, String>>(emptyMap())
@@ -80,12 +85,12 @@ class PredictionViewModel(
         combine(settings.parameters, drafts, nodeSettings, ::build)
             .stateIn(viewModelScope, SharingStarted.Eagerly, PredictionUiState())
 
-    fun onFieldChange(field: LinkField, text: String) {
+    override fun onFieldChange(field: LinkField, text: String) {
         drafts.update { it + (field to text) }
         field.parse(text)?.let { value -> settings.updateParameters { field.write(it, value) } }
     }
 
-    fun onSpreadingFactorChange(sf: SpreadingFactor) = settings.updateParameters { it.copy(spreadingFactor = sf) }
+    override fun onSpreadingFactorChange(sf: SpreadingFactor) = settings.updateParameters { it.copy(spreadingFactor = sf) }
 
     private fun build(params: LinkParameters, drafts: Map<LinkField, String>, node: LoraSettings?): PredictionUiState {
         val fields = LinkField.entries.map { field ->
