@@ -1,6 +1,7 @@
 package com.example.meshviability.domain.link
 
 import com.example.meshviability.domain.entities.LinkQuality
+import com.example.meshviability.domain.entities.LoraSettings
 
 // Parámetros del enlace que se editan en la UI.
 // Por defecto: Heltec V3 con Long Fast, sin cables ni antenas con ganancia.
@@ -34,6 +35,14 @@ data class LinkParameters(
         const val DEFAULT_DISTANCE_KM = 1.0
     }
 }
+
+// lo que el nodo informa reemplaza lo ingresado; lo que no informa se conserva
+fun LinkParameters.withNodeSettings(settings: LoraSettings): LinkParameters = copy(
+    txPowerDbm = settings.txPowerDbm?.toDouble() ?: txPowerDbm,
+    frequencyMhz = settings.frequencyMhz ?: frequencyMhz,
+    spreadingFactor = settings.spreadingFactor ?: spreadingFactor,
+    bandwidthHz = settings.bandwidthHz ?: bandwidthHz,
+)
 
 data class LinkPrediction(
     val noiseDbm: Double,
