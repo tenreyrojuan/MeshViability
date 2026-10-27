@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -23,6 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -37,7 +40,7 @@ fun MeasurementScreen(viewModel: MeasurementViewModel, modifier: Modifier = Modi
         modifier.fillMaxSize().padding(horizontal = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { SummaryCard(state) }
+        item { SummaryCard(state, viewModel) }
         item { CriteriaCard(state, viewModel) }
         if (state.rows.isEmpty()) {
             item {
@@ -56,8 +59,10 @@ private fun LevelDot(level: LinkLevel) {
     Box(Modifier.size(16.dp).clip(CircleShape).background(level.color()))
 }
 
+@Suppress("DEPRECATION") // LocalClipboard pide un ClipEntry distinto por plataforma
 @Composable
-private fun SummaryCard(state: MeasurementUiState) {
+private fun SummaryCard(state: MeasurementUiState, viewModel: MeasurementViewModel) {
+    val clipboard = LocalClipboardManager.current
     Card(Modifier.fillMaxWidth().padding(top = 12.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -67,6 +72,10 @@ private fun SummaryCard(state: MeasurementUiState) {
             Text("Mediciones válidas: ${state.rows.size} · descartadas: ${state.discarded}")
             state.averageWorstMargin?.let { Text("Margen promedio (peor de RSSI y SNR): $it") }
             state.averageExtraLoss?.let { Text("Pérdida extra promedio vs. espacio libre a ${state.distance}: $it") }
+            OutlinedButton(onClick = { clipboard.setText(AnnotatedString(viewModel.exportCsv())) }, enabled = state.canExport) {
+                Text("Copiar sesión como CSV")
+            }
+            state.exportNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }

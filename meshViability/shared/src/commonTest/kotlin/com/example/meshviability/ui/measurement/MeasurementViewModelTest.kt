@@ -88,4 +88,16 @@ class MeasurementViewModelTest {
         assertTrue(s.thresholdFields.single { it.field == ThresholdField.ACCEPTABLE }.isError)
         assertEquals(10.0, session.settings.thresholds.value.acceptableDb)
     }
+
+    @Test
+    fun exportarLaSesionComoCsv() = runTest {
+        val (session, vm) = connected()
+        session.pushText("hola")
+        runCurrent()
+
+        val lines = vm.exportCsv().trimEnd().split("\r\n")
+        assertEquals(2, lines.size)
+        assertTrue(lines[1].contains("Nodo B"))
+        assertEquals("CSV copiado al portapapeles. Mensajes: 1", vm.uiState.value.exportNotice)
+    }
 }

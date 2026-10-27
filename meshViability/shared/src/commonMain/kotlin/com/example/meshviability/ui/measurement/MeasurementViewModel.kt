@@ -2,6 +2,7 @@ package com.example.meshviability.ui.measurement
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.meshviability.data.export.SessionCsv
 import com.example.meshviability.data.protocol.MeshState
 import com.example.meshviability.data.repository.LinkSettingsRepository
 import com.example.meshviability.data.repository.MeshRepository
@@ -63,6 +64,8 @@ data class MeasurementUiState(
     val thresholdFields: List<ThresholdFieldUi> = emptyList(),
     val thresholdError: String? = null,
     val acceptUnknownHops: Boolean = false,
+    val canExport: Boolean = false,
+    val exportNotice: String? = null,
 )
 
 fun LinkLevel.label(): String = when (this) {
@@ -73,7 +76,7 @@ fun LinkLevel.label(): String = when (this) {
 }
 
 class MeasurementViewModel(
-    repository: MeshRepository,
+    private val repository: MeshRepository,
     private val settings: LinkSettingsRepository,
     private val sessionStartMs: Long,
 ) : ViewModel() {
@@ -92,6 +95,7 @@ class MeasurementViewModel(
 
     private val drafts = MutableStateFlow<Map<ThresholdField, String>>(emptyMap())
     private val thresholdError = MutableStateFlow<Pair<ThresholdField, String>?>(null)
+    private val exportNotice = MutableStateFlow<String?>(null)
 
     private val inputs = combine(repository.messages, repository.remoteNodes, repository.state) { m, n, s ->
         Inputs(m, n, (s as? MeshState.Ready)?.myNodeNum)
@@ -100,7 +104,7 @@ class MeasurementViewModel(
     private val criteria = combine(settings.parameters, settings.thresholds, settings.acceptUnknownHops, ::Criteria)
 
     val uiState: StateFlow<MeasurementUiState> =
-        combine(inputs, criteria, drafts, thresholdError, ::build)
+        combine(inputs, criteria, drafts, thresholdError, exportNotice, ::build)
             .stateIn(viewModelScope, SharingStarted.Eagerly, MeasurementUiState())
 
     fun onThresholdChange(field: ThresholdField, text: String) {
@@ -122,11 +126,26 @@ class MeasurementViewModel(
 
     fun onAcceptUnknownHopsChange(accept: Boolean) = settings.setAcceptUnknownHops(accept)
 
+    // la sesión completa, para pegarla en una planilla
+    fun exportCsv(): String {
+        val me = (repository.state.value as? MeshState.Ready)?.myNodeNum
+        val nodes = repository.remoteNodes.value
+        val messages = repository.messages.value
+        exportNotice.value = "CSV copiado al portapapeles. Mensajes: ${messages.size}"
+        return SessionCsv.build(
+            messages,
+            settings.parameters.value,
+            settings.thresholds.value,
+            settings.acceptUnknownHops.value,
+        ) { nodeLabel(it, nodes, me) }
+    }
+
     private fun build(
         inputs: Inputs,
         criteria: Criteria,
         drafts: Map<ThresholdField, String>,
         thresholdError: Pair<ThresholdField, String>?,
+        exportNotice: String?,
     ): MeasurementUiState {
         val received = inputs.messages.mapNotNull { m -> m.signalQuality?.let { m to it } }
         val valid = received.filter { (_, q) -> q.validity(criteria.acceptUnknownHops) == MeasurementValidity.VALID }
@@ -154,6 +173,8 @@ class MeasurementViewModel(
             },
             thresholdError = thresholdError?.second,
             acceptUnknownHops = criteria.acceptUnknownHops,
+            canExport = inputs.messages.isNotEmpty(),
+            exportNotice = exportNotice,
         )
     }
 
