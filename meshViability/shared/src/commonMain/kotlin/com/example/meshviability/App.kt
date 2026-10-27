@@ -29,7 +29,7 @@ private val tabs = listOf("Mensajería", "Predicción", "Medición")
 // platformLinks: Bluetooth en Android, USB en escritorio. El nodo simulado se agrega siempre.
 @Composable
 fun App(platformLinks: List<RadioLink> = emptyList()) {
-        val session = viewModel { SessionViewModel(platformLinks) }
+    val session = viewModel { SessionViewModel(platformLinks) }
     val messaging = viewModel {
         MessagingViewModel(session.repository, session.settings, session.transport, session.sessionStartMs)
     }
@@ -38,19 +38,27 @@ fun App(platformLinks: List<RadioLink> = emptyList()) {
 
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
+    AppScaffold(selected, onSelected = { selected = it }) { modifier ->
+        when (selected) {
+            0 -> MessagingScreen(messaging, modifier)
+            1 -> PredictionScreen(prediction, modifier)
+            else -> MeasurementScreen(measurement, modifier)
+        }
+    }
+}
+
+// pestañas sin ViewModels, para poder usarlas en los previews
+@Composable
+fun AppScaffold(selected: Int, onSelected: (Int) -> Unit, content: @Composable (Modifier) -> Unit) {
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 PrimaryTabRow(selectedTabIndex = selected) {
                     tabs.forEachIndexed { i, title ->
-                        Tab(selected = i == selected, onClick = { selected = i }, text = { Text(title) })
+                        Tab(selected = i == selected, onClick = { onSelected(i) }, text = { Text(title) })
                     }
                 }
-                when (selected) {
-                    0 -> MessagingScreen(messaging, Modifier.weight(1f))
-                    1 -> PredictionScreen(prediction, Modifier.weight(1f))
-                    else -> MeasurementScreen(measurement, Modifier.weight(1f))
-                }
+                content(Modifier.weight(1f))
             }
         }
     }

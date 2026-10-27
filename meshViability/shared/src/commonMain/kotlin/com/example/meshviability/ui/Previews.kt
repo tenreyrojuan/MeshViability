@@ -3,6 +3,11 @@ package com.example.meshviability.ui
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.example.meshviability.AppScaffold
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.meshviability.data.transport.RadioDevice
 import com.example.meshviability.domain.entities.LinkQuality
@@ -182,3 +187,17 @@ fun PredictionPreview() = PreviewTheme { PredictionContent(samplePrediction(), N
 @Preview
 @Composable
 fun MeasurementPreview() = PreviewTheme { MeasurementContent(sampleMeasurement(), NoMeasurementActions) }
+
+// la app completa; en el modo interactivo del preview se puede cambiar de pestaña
+@Preview
+@Composable
+fun AppPreview() {
+    var selected by remember { mutableIntStateOf(0) }
+    AppScaffold(selected, onSelected = { selected = it }) { modifier ->
+        when (selected) {
+            0 -> MessagingContent(sampleMessaging, NoMessagingActions, modifier)
+            1 -> PredictionContent(samplePrediction(), NoPredictionActions, modifier)
+            else -> MeasurementContent(sampleMeasurement(), NoMeasurementActions, modifier)
+        }
+    }
+}
